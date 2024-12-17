@@ -18,6 +18,15 @@ app.post('/v1/chat/completions', async (req, res) => {
   let currentKeyIndex = 0;
   try {
     const { model, messages, stream = false } = req.body;
+
+    // 将messages中的content从列表转换为字符串
+    const convertedMessages = messages.map(message => {
+      if (Array.isArray(message.content)) {
+        message.content = message.content.map(c => c.text).join('\n');
+      }
+      return message;
+    });
+
     let authToken = req.headers.authorization?.replace('Bearer ', '');
     // 处理逗号分隔的密钥
     const keys = authToken.split(',').map((key) => key.trim());
@@ -32,13 +41,13 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (authToken && authToken.includes('%3A%3A')) {
       authToken = authToken.split('%3A%3A')[1];
     }
-    if (!messages || !Array.isArray(messages) || messages.length === 0 || !authToken) {
+    if (!convertedMessages || !Array.isArray(convertedMessages) || convertedMessages.length === 0 || !authToken) {
       return res.status(400).json({
         error: 'Invalid request. Messages should be a non-empty array and authorization is required',
       });
     }
 
-    const hexData = await stringToHex(messages, model);
+    const hexData = await stringToHex(convertedMessages, model);
 
     // 获取checksum，req header中传递优先，环境变量中的等级第二，最后随机生成
     const checksum =
