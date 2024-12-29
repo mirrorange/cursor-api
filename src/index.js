@@ -19,8 +19,10 @@ app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, stream = false } = req.body;
 
-    // 获取 prompt injection
-    const promptInjection = req.headers['x-prompt-injection'] || '';
+    // 获取并解码 prompt injection
+    const encodedPromptInjection = req.headers['x-prompt-injection'] || '';
+    const promptInjection = encodedPromptInjection ? 
+      Buffer.from(encodedPromptInjection, 'base64').toString() : '';
 
     // 新增：将messages中的content从列表转换为字符串，并在最后一条消息中添加 prompt injection
     const convertedMessages = messages.map((message, index) => {
@@ -54,8 +56,11 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
-    // 获取 CustomInstruction 
-    const customInstruction = req.headers['x-cursor-custom-instruction'] ?? process.env['x-cursor-custom-instruction'] ?? 'Always respond in the same language as the user or in the language specified by the user.';
+    // 获取并解码 CustomInstruction 
+    const encodedCustomInstruction = req.headers['x-custom-instruction'] ?? process.env['x-custom-instruction'];
+    const customInstruction = encodedCustomInstruction ? 
+      Buffer.from(encodedCustomInstruction, 'base64').toString() : 
+      'Always respond in the same language as the user or in the language specified by the user.';
 
     const hexData = await stringToHex(convertedMessages, model, customInstruction);
 
