@@ -19,10 +19,17 @@ app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, stream = false } = req.body;
 
-    // 将messages中的content从列表转换为字符串
-    const convertedMessages = messages.map(message => {
+    // 获取 prompt injection
+    const promptInjection = req.headers['x-prompt-injection'] || '';
+
+    // 新增：将messages中的content从列表转换为字符串，并在最后一条消息中添加 prompt injection
+    const convertedMessages = messages.map((message, index) => {
       if (Array.isArray(message.content)) {
         message.content = message.content.map(c => c.text).join('\n');
+      }
+      // 如果是最后一条消息且存在 prompt injection，则添加到消息末尾
+      if (index === messages.length - 1 && promptInjection) {
+        message.content = `${message.content}\n${promptInjection}`;
       }
       return message;
     });
@@ -47,7 +54,10 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
-    const hexData = await stringToHex(convertedMessages, model);
+    // 获取 CustomInstruction 
+    const customInstruction = req.headers['x-cursor-custom-instruction'] ?? process.env['x-cursor-custom-instruction'] ?? 'Always respond in the same language as the user or in the language specified by the user.';
+
+    const hexData = await stringToHex(convertedMessages, model, customInstruction);
 
     // 获取checksum，req header中传递优先，环境变量中的等级第二，最后随机生成
     const checksum =

@@ -4,7 +4,7 @@ const $root = require('./message.js');
 
 const regex = /<\|BEGIN_SYSTEM\|>.*?<\|END_SYSTEM\|>.*?<\|BEGIN_USER\|>.*?<\|END_USER\|>/s;
 
-async function stringToHex(messages, modelName) {
+async function stringToHex(messages, modelName, customInstruction) {
   const formattedMessages = messages.map((msg) => ({
     ...msg,
     role: msg.role === 'user' ? 1 : 2,
@@ -14,7 +14,7 @@ async function stringToHex(messages, modelName) {
   const message = {
     messages: formattedMessages,
     instructions: {
-      instruction: 'Always respond in 中文',
+      instruction: customInstruction,
     },
     projectPath: '/path/to/project',
     model: {
