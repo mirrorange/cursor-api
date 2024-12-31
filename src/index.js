@@ -95,29 +95,129 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
 
       const responseId = `chatcmpl-${uuidv4()}`;
+      const encodedStartsWith = req.headers['x-starts-with'] || '';
+      const encodedEndsWith = req.headers['x-ends-with'] || '';
+      
+      // Base64 解码
+      const startsWith = encodedStartsWith ? Buffer.from(encodedStartsWith, 'base64').toString() : '';
+      const endsWith = encodedEndsWith ? Buffer.from(encodedEndsWith, 'base64').toString() : '';
+      
+      let buffer = '';
+      let hasStarted = !startsWith; // 如果没有 startsWith，则直接开始输出
 
       // 使用封装的函数处理 chunk
       for await (const chunk of response.body) {
         const text = await chunkToUtf8String(chunk);
-
         if (text.length > 0) {
-          res.write(
-            `data: ${JSON.stringify({
-              id: responseId,
-              object: 'chat.completion.chunk',
-              created: Math.floor(Date.now() / 1000),
-              model,
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    content: text,
-                  },
-                },
-              ],
-            })}\n\n`,
-          );
+          buffer += text;
+          
+          // 处理 startsWith 条件
+          if (!hasStarted) {
+            const startsIndex = buffer.indexOf(startsWith);
+            if (startsIndex !== -1) {
+              hasStarted = true;
+              buffer = buffer.substring(startsIndex + startsWith.length);
+            } else {
+              continue; // 继续等待直到找到 startsWith
+            }
+          }
+
+          // 处理 endsWith 条件
+          if (endsWith) {
+            const endsIndex = buffer.indexOf(endsWith);
+            if (endsIndex !== -1) {
+              // 发送最后一段文本并结束
+              const finalText = buffer.substring(0, endsIndex);
+              if (finalText.length > 0) {
+                res.write(
+                  `data: ${JSON.stringify({
+                    id: responseId,
+                    object: 'chat.completion.chunk',
+                    created: Math.floor(Date.now() / 1000),
+                    model,
+                    choices: [
+                      {
+                        index: 0,
+                        delta: {
+                          content: finalText,
+                        },
+                      },
+                    ],
+                  })}\n\n`
+                );
+              }
+              res.write('data: [DONE]\n\n');
+              return res.end();
+            }
+          }
+
+          // 发送缓冲区中的文本
+          if (hasStarted) {
+            if (endsWith) {
+              // 如果设置了 endsWith，保留最后一个 chunk 以防它包含 endsWith 的部分内容
+              const safeLength = Math.max(0, buffer.length - endsWith.length);
+              if (safeLength > 0) {
+                const sendText = buffer.substring(0, safeLength);
+                buffer = buffer.substring(safeLength);
+                res.write(
+                  `data: ${JSON.stringify({
+                    id: responseId,
+                    object: 'chat.completion.chunk',
+                    created: Math.floor(Date.now() / 1000),
+                    model,
+                    choices: [
+                      {
+                        index: 0,
+                        delta: {
+                          content: sendText,
+                        },
+                      },
+                    ],
+                  })}\n\n`
+                );
+              }
+            } else {
+              // 如果没有设置 endsWith，直接发送整个缓冲区
+              res.write(
+                `data: ${JSON.stringify({
+                  id: responseId,
+                  object: 'chat.completion.chunk',
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        content: buffer,
+                      },
+                    },
+                  ],
+                })}\n\n`
+              );
+              buffer = '';
+            }
+          }
         }
+      }
+
+      // 发送剩余的缓冲区内容
+      if (hasStarted && buffer.length > 0) {
+        res.write(
+          `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: buffer,
+                },
+              },
+            ],
+          })}\n\n`
+        );
       }
 
       res.write('data: [DONE]\n\n');
