@@ -10,6 +10,7 @@
   "dependencies": {
     "express": "4.21.1",
     "protobufjs": "^7.4.0",
+    "stream-regex": "^0.3.2",
     "uuid": "11.0.3"
   },
   "scripts": {
